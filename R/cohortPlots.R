@@ -11,7 +11,7 @@
 #' @import magrittr
 #' @return a ggplot object of the preference distribribution
 #' @export
-getPsPlot <- function(preference_score_dist,
+getPreferenceDensity <- function(preference_score_dist,
                       filePath = TRUE,
                       target_id,
                       comparator_id,
@@ -72,41 +72,80 @@ getPsPlot <- function(preference_score_dist,
     )
   
   
-  # #labelling see lines 455 to 481
-  # unitOfAnalysis <- "subjects"
-  # labelsLeft <- c()
-  # #labelsRight <- c()
-  # labelsLeft <- c(labelsLeft, sprintf("%s: %s %s", targetLabel, format(sum(as.numeric(d$treatment) == 1), big.mark = ",", scientific = FALSE), unitOfAnalysis))
-  # labelsLeft <- c(labelsLeft, sprintf("%s: %s %s", comparatorLabel, format(sum(as.numeric(d$treatment) == 2), big.mark = ",", scientific = FALSE), unitOfAnalysis))
-  # 
-  # # auc <- CohortMethod::computePsAuc(data, confidenceIntervals = FALSE)
-  # # labelsRight <- c(labelsRight, sprintf("AUC:\t\t%0.2f", auc))
-  # 
-  # # equipoise <- mean(data$preferenceScore >= 0.3 & data$preferenceScore <= 0.7)
-  # # labelsRight <- c(labelsRight, sprintf("%2.1f%% is in equipoise", equipoise*100))
-  # 
-  # dummyLeft <- data.frame(text = paste(labelsLeft, collapse = "\n"))
-  # yLine <- max(d$y) * 1.24
-  # # dummyRight <- data.frame(text = paste(labelsRight, collapse = "\n"))
-  # plot <- plot + 
-  #   ggplot2::geom_label(
-  #     x = 0, 
-  #     y = 4, 
-  #     hjust = "left", 
-  #     vjust = "top",
-  #     alpha = 0.8, 
-  #     ggplot2::aes(label = text), 
-  #     data = dummyLeft, 
-  #     size = 3.5) 
-  #   # ggplot2::geom_label(
-  #   #   x = 1, 
-  #   #   y =  max(d$y) * 1.24, 
-  #   #   hjust = "right", 
-  #   #   vjust = "top", 
-  #   #   alpha = 0.8, 
-  #   #   ggplot2::aes(label = text), 
-  #   #   data = dummyRight, 
-  #   #   size = 3.5)
+  return(plot)
+  
+}
+
+
+#' Plot Covariate Balance
+#' 
+#' This function takes the covariate balance and shows the balance scatter plot 
+#' @param balance either a valid csv path, dataframe or tibble. If using a csv path
+#' filePath must be true
+#' @param filePath a logic toggle indicating whether a file path is used for balance
+#' @param target_id the target id to extract from the aggregate file
+#' @param comparator_id the comparator id to extract from the aggregate file
+#' @param outcome_id the outcome id to extract from the aggregate file
+#' @param analysis_id the analysis id to exctract from the aggregate file
+#' @import magrittr
+#' @return a ggplot object of the covariate balance scatter plot
+#' @export
+getBalanceScatter <- function(balance,
+                                 filePath = TRUE,
+                                 target_id,
+                                 comparator_id,
+                                 outcome_id,
+                                 analysis_id) {
+  
+  #check if preference score dist is a path string and if it exists
+  if (is.character(balance) & filePath) {
+    if (file.exists(balance)) {
+      #read in 
+      balance <- readr::read_csv(balance,
+                                 col_types = readr::cols())
+    } else{
+      stop("balance must be a data frame, tibble or a valid path to a csv file")
+    }
+  } else {
+    stop("balance must be a data frame, tibble or a valid path to a csv file")
+  }
+  
+  #check if preference score dist is a dataframe
+  if (!tibble::is_tibble(balance) | !is.data.frame(balance)) {
+    stop("balance must be a data frame, tibble or a valid path to a csv file")
+  }
+  
+  data <- balance %>%
+    dplyr::filter(target_id == !!target_id, 
+                  comparator_id == !!comparator_id, 
+                  outcome_id == !!outcome_id, 
+                  analysis_id == !!analysis_id)
+  
+  #scatter plot
+  beforeLabel <- as.character("Before matching")
+  afterLabel <- as.character("After matching")
+  data$beforeMatchingStdDiff <- abs(data$std_diff_before)
+  data$afterMatchingStdDiff <- abs(data$std_diff_after)
+  
+  
+  limits <- c(min(c(data$beforeMatchingStdDiff, data$afterMatchingStdDiff), na.rm = TRUE),
+              max(c(data$beforeMatchingStdDiff, data$afterMatchingStdDiff), na.rm = TRUE))
+  plot <- ggplot2::ggplot(data,
+                          ggplot2::aes(x = .data$beforeMatchingStdDiff, y = .data$afterMatchingStdDiff)) +
+    ggplot2::geom_point(color = rgb(0, 0, 0.8, alpha = 0.3), shape = 16) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    ggplot2::geom_hline(yintercept = 0) +
+    ggplot2::geom_vline(xintercept = 0) +
+    ggplot2::ggtitle("Standardized difference of mean") +
+    ggplot2::scale_x_continuous(beforeLabel, limits = limits) +
+    ggplot2::scale_y_continuous(afterLabel, limits = limits)
+  
+  
+  labels <- c()
+  labels <- c(labels, sprintf("Number of covariates: %s", format(nrow(data), big.mark = ",", scientific = FALSE)))
+  labels <- c(labels, sprintf("%s max(absolute): %.2f", afterLabel, max(abs(data$afterMatchingStdDiff), na.rm = TRUE)))
+  dummy <- data.frame(text = paste(labels, collapse = "\n"))
+  plot <- plot + ggplot2::geom_label(x = limits[1] + 0.01, y = limits[2], hjust = "left", vjust = "top", alpha = 0.8, ggplot2::aes(label = text), data = dummy, size = 3.5)
   
   return(plot)
   
